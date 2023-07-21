@@ -27,6 +27,19 @@ public:
     }
 
     /**
+     * Enregistrer le résultat dans un fichier PNG
+     */
+    void enregistrer(const png_bytep data, const std::string & nom_fichier) {
+        if (data == NULL)
+            throw "le vecteur de données pointe vers NULL";
+
+        if (!png_image_write_to_file(
+            &entete, nom_fichier.c_str(), 0, data, 0, NULL)) {
+            throw nom_fichier + " - " + entete.message;
+        }
+    }
+
+    /**
      * Chargement des métadonnées du fichier PNG
      */
     void init_lecture(const std::string & nom_fichier) {
@@ -72,6 +85,10 @@ class ModeleCTC: public std::vector<CTC>
 {
 public:
     ModeleCTC(): larg(0), haut(0) {}
+
+    void enregistrer(LePNG & png, const std::string & nom_fichier) const {
+        png.enregistrer((const png_bytep)data(), nom_fichier);
+    }
 
     /**
      * Redimensionner la grille et lire les données du fichier PNG
@@ -222,6 +239,14 @@ int main(int argc, char** argv)
 
     // Aperçu après simulation
     std::cout << carte_gpu << std::endl;
+
+    try {
+        carte_gpu.enregistrer(png, "resultat.png");
+    }
+    catch (const std::string message) {
+        std::cerr << "Erreur: " << message << std::endl;
+        return 3;
+    }
 
     return 0;
 }
