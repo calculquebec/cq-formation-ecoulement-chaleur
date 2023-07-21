@@ -1,8 +1,14 @@
+#include <algorithm>
+#include <cmath>
 #include <cstring>
 #include <iostream>
 #include <string>
 #include <vector>
 #include <png.h>
+
+
+const double SEUIL_CONVERGENCE = 1e-4;  // par rapport au delta_temp moyen
+const unsigned int NB_MAX_ITER = 4096;
 
 
 /**
@@ -23,7 +29,7 @@ public:
     /**
      * Chargement des métadonnées du fichier PNG
      */
-    void initLecture(const std::string & nom_fichier) {
+    void init_lecture(const std::string & nom_fichier) {
         if (!png_image_begin_read_from_file(&entete, nom_fichier.c_str()))
             throw nom_fichier + " - " + entete.message;
     }
@@ -31,9 +37,9 @@ public:
     /**
      * Lecture des pixels RGB (rouge, vert, bleu), 3x8 bits
      */
-    void lireRGB(png_bytep data) {
+    void lire_RGB(png_bytep data) {
         if (data == NULL)
-            throw "data buffer unallocated";
+            throw "le vecteur de données pointe vers NULL";
 
         entete.format = PNG_FORMAT_RGB;
 
@@ -75,7 +81,39 @@ public:
         haut = png.hauteur();
 
         resize(larg * haut);
-        png.lireRGB((png_bytep)data());
+        png.lire_RGB((png_bytep)data());
+    }
+
+    double un_pas_de_temps() {
+        double delta_temp = 0.;
+
+        // Convergence accélérée si traité en damier (une couleur à la fois)
+        for (auto impair = 0; impair < 2; ++impair) {
+            // Laisser faire la marge de 1 pixel
+            for (auto i = 1; i < haut - 1; ++i) {
+                auto depart = (((i + 1) ^ impair) & 1);  // Damier
+
+                for (auto j = 1 + depart; j < larg - 1; j += 2) {
+                    int conduct = conduction(i, j);
+                    int ancienne_temp = temperat(i, j);
+                    int nouvelle_temp = ((int)
+                        temperat(i - 1, j) +
+                        temperat(i, j - 1) +
+                        temperat(i, j + 1) +
+                        temperat(i + 1, j) + 3) / 4;
+
+                    png_byte temp_finale = (
+                        (256 - conduct) * ancienne_temp +
+                        conduct * nouvelle_temp + 128) / 256;
+                    ctc(i, j).temp = std::max(temp_finale, chaleur(i,j));
+
+                    delta_temp += (ancienne_temp - ctc(i, j).temp) *
+                        (ancienne_temp - ctc(i, j).temp);
+                }
+            }
+        }
+
+        return std::sqrt(delta_temp / (larg * haut));
     }
 
     /**
@@ -133,7 +171,7 @@ std::ostream& operator<<(std::ostream & ostr, const ModeleCTC & modele)
             // Calculer la moyenne des valeurs de conduction ( [0, 256[ )
             for (auto ii = i - sautV; ii < i; ++ii) {
                 for (auto jj = j - sautH; jj < j; ++jj) {
-                    cond_tot += modele.conduction(ii, jj);
+                    cond_tot += modele.temperat(ii, jj);
                 }
             }
 
@@ -162,14 +200,28 @@ int main(int argc, char** argv)
     }
 
     try {
-        png.initLecture(argv[1]);
+        png.init_lecture(argv[1]);
         carte_gpu.initialiser(png);
-        std::cout << carte_gpu << std::endl;
     }
     catch (const std::string message) {
         std::cerr << "Erreur: " << message << std::endl;
         return 2;
     }
+
+    // Boucle principale
+    double delta_temp = SEUIL_CONVERGENCE + 1.;
+    unsigned int nb_iter = 0;
+
+    while(delta_temp > SEUIL_CONVERGENCE && nb_iter < NB_MAX_ITER) {
+        delta_temp = carte_gpu.un_pas_de_temps();
+        nb_iter++;
+    }
+
+    std::cout << "Itération #" << nb_iter
+        << ", ajustement moyen = " << delta_temp << std::endl;
+
+    // Aperçu après simulation
+    std::cout << carte_gpu << std::endl;
 
     return 0;
 }
