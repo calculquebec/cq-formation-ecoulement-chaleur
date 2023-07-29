@@ -8,7 +8,8 @@
 #include <png.h>
 
 
-const double SEUIL_CONVERGENCE = 1e-4;  // par rapport au delta_temp moyen
+typedef float ctc_t;
+const ctc_t SEUIL_CONVERGENCE = 1e-4;  // par rapport au delta_temp moyen
 const unsigned int NB_MAX_ITER = 4096;
 
 
@@ -61,7 +62,7 @@ private:
 
 
 /**
- * Affiche un aperçu du modèle en ASCII
+ * Affiche un aperçu du canal vert (Green) en ASCII
  * @param ostr   Objet std::ostream tel que std::cout
  * @param modele Le modèle chaleur-température-conduction
  * @return L'objet std::ostream pour des appels à la chaîne
@@ -78,17 +79,17 @@ std::ostream& operator<<(std::ostream & ostr, const LePNG & png)
     // Pour chaque bloc complet de taille sautH x sautV
     for (auto i = sautV + hauteur % sautV / 2; i < hauteur; i += sautV) {
         for (auto j = sautH + largeur % sautH / 2; j < largeur; j += sautH) {
-            unsigned int temp_tot = 0;
+            unsigned int vert_tot = 0;
 
-            // Calculer la moyenne des valeurs de conduction ( [0, 256[ )
+            // Calculer la moyenne des valeurs de vert ( [0, 256[ )
             for (auto ii = i - sautV; ii < i; ++ii) {
                 for (auto jj = j - sautH; jj < j; ++jj) {
-                    temp_tot += png[ii * largeur + jj].green;
+                    vert_tot += png[ii * largeur + jj].green;
                 }
             }
 
             // Sélectionner un des 16 caractères ASCII (/16 = *16/256)
-            ostr << ascii[temp_tot / (sautV * sautH * 16)];
+            ostr << ascii[vert_tot / (sautV * sautH * 16)];
         }
 
         ostr << std::endl;
@@ -102,9 +103,9 @@ std::ostream& operator<<(std::ostream & ostr, const LePNG & png)
  * Triplet (Chaleur, Température, Conduction)
  */
 typedef struct {
-    double chaleur;      // Intensité de la source de chaleur
-    double temperature;  // Température en degrés Celsius
-    double conduction;   // Facteur de conduction de chaleur
+    ctc_t chaleur;      // Intensité de la source de chaleur
+    ctc_t temperature;  // Température en degrés Celsius
+    ctc_t conduction;   // Facteur de conduction de chaleur
 } CTC;
 
 
@@ -139,21 +140,21 @@ public:
     /**
      * Accès à une composante
      */
-    inline double chaleur(std::size_t rangee, std::size_t colonne) const {
+    inline ctc_t chaleur(std::size_t rangee, std::size_t colonne) const {
         return at(rangee * larg + colonne).chaleur;
     }
-    inline double temperature(std::size_t rangee, std::size_t colonne) const {
+    inline ctc_t temperature(std::size_t rangee, std::size_t colonne) const {
         return at(rangee * larg + colonne).temperature;
     }
-    inline double conduction(std::size_t rangee, std::size_t colonne) const {
+    inline ctc_t conduction(std::size_t rangee, std::size_t colonne) const {
         return at(rangee * larg + colonne).conduction;
     }
 
     inline std::size_t largeur() const { return larg; }
     inline std::size_t hauteur() const { return haut; }
 
-    double un_pas_de_temps() {
-        double delta_temp = 0.;
+    ctc_t un_pas_de_temps() {
+        ctc_t delta_temp = 0.;
 
         // Convergence accélérée si traité en damier (une couleur à la fois)
         for (auto impair = 0; impair < 2; ++impair) {
@@ -210,9 +211,9 @@ int main(int argc, char** argv)
         std::transform(png.cbegin(), png.cend(), carte_gpu.begin(),
             [](const png_color & pixel) {
                 return CTC {
-                    (double)pixel.red,
-                    (double)pixel.green,
-                    (double)pixel.blue / 256
+                    (ctc_t)pixel.red,
+                    (ctc_t)pixel.green,
+                    (ctc_t)pixel.blue / 256
                 };
             });
     }
@@ -222,7 +223,7 @@ int main(int argc, char** argv)
     }
 
     // Boucle principale
-    double delta_temp = SEUIL_CONVERGENCE + 1.;
+    ctc_t delta_temp = SEUIL_CONVERGENCE + 1.;
     unsigned int nb_iter = 0;
 
     while (delta_temp > SEUIL_CONVERGENCE && nb_iter < NB_MAX_ITER) {
