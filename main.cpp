@@ -1,11 +1,12 @@
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <iostream>
 #include <numeric>
+#include <png.h>
 #include <string>
 #include <vector>
-#include <png.h>
 
 
 typedef float ctc_t;
@@ -246,15 +247,29 @@ int main(int argc, char** argv)
     // Tranformer les triplets CTC en pixels RGB
     std::transform(carte_gpu.cbegin(), carte_gpu.cend(), png.begin(),
         [](const CTC & ctc) {
+            const double t = ctc.temperature / 255;
+            std::vector<std::array<double, 3>> couleurs {{
+               {  0,   0,   0},  // Noir
+               {  0,   0, 255},  // Bleu
+               {255,   0, 255},  // Magenta
+               {255,   0,   0},  // Rouge
+               {255, 255,   0},  // Jaune
+               {255, 255, 255}   // Blanc
+            }};
+            // Calcul itératif de courbe de Bézier dans l'espace des couleurs
+            for (auto iter = 1; iter < couleurs.size(); ++iter) {
+                for (auto i = 0; i < couleurs.size() - iter; ++i) {
+                    couleurs[i][0] += t * (couleurs[i+1][0] - couleurs[i][0]);
+                    couleurs[i][1] += t * (couleurs[i+1][1] - couleurs[i][1]);
+                    couleurs[i][2] += t * (couleurs[i+1][2] - couleurs[i][2]);
+                }
+            }
             return png_color {
-                (png_byte)ctc.chaleur,
-                (png_byte)ctc.temperature,
-                (png_byte)(ctc.conduction * 256)
+                (png_byte)couleurs[0][0],
+                (png_byte)couleurs[0][1],
+                (png_byte)couleurs[0][2]
             };
         });
-
-    // Aperçu après simulation
-    std::cout << png << std::endl;
 
     try {
         png.enregistrer("resultat.png");
