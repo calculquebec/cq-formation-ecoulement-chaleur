@@ -9,8 +9,9 @@
 
 
 typedef float ctc_t;
-const ctc_t SEUIL_CONVERGENCE = 1e-4;  // par rapport au delta_temp moyen
-const unsigned int NB_MAX_ITER = 4096;
+const ctc_t BRUIT = 6.4 / 256;  // 6.4 unités de la résolution de 8 bits
+const ctc_t SEUIL_CONVERGENCE = 0.5 / 256;  // 0.5 unité par pixel
+const unsigned int NB_MAX_ITER = 5000; // Limiter le temps de calcul
 
 
 /**
@@ -169,7 +170,7 @@ public:
                         temperature(i - 1, j) +
                         temperature(i, j - 1) +
                         temperature(i, j + 1) +
-                        temperature(i + 1, j) ) / 4);
+                        temperature(i + 1, j) ) / 4 + BRUIT);
 
                     ctc(i, j).temperature = conduct * nouvelle_temp +
                         (1.0 - conduct) * ancienne_temp;
@@ -237,7 +238,7 @@ int main(int argc, char** argv)
             return a.temperature < b.temperature;
         });
     std::cout << "Itération #" << nb_iter
-        << ", ajustement moyen = " << delta_temp
+        << ", ajustement moyen = " << delta_temp * 256 << " / 256"
         << ", t_min = " << minmax.first->temperature
         << ", t_max = " << minmax.second->temperature
         << std::endl;
