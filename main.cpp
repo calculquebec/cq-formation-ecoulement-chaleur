@@ -246,8 +246,9 @@ int main(int argc, char** argv)
 
     // Tranformer les triplets CTC en pixels RGB
     std::transform(carte_gpu.cbegin(), carte_gpu.cend(), png.begin(),
-        [](const CTC & ctc) {
-            const double t = ctc.temperature / 255;
+        [minmax](const CTC & ctc) {
+            const double t = (ctc.temperature - minmax.first->temperature) /
+                (minmax.second->temperature - minmax.first->temperature);
             std::vector<std::array<double, 3>> couleurs {{
                {  0,   0,   0},  // Noir
                {  0,   0, 255},  // Bleu
