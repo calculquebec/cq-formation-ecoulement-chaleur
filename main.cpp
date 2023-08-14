@@ -64,44 +64,6 @@ private:
 
 
 /**
- * Affiche un aperçu du canal vert (Green) en ASCII
- * @param ostr   Objet std::ostream tel que std::cout
- * @param modele Le modèle chaleur-température-conduction
- * @return L'objet std::ostream pour des appels à la chaîne
- */
-std::ostream& operator<<(std::ostream & ostr, const LePNG & png)
-{
-    const char ascii[] = " .,!~:;+=xzXZ%#@";
-    const auto largeur = png.largeur(), hauteur = png.hauteur();
-    const auto sautH = png.largeur() / 80;  // caractères de large
-    const auto sautV = sautH * 2;
-
-    ostr << "Taille du modèle: " << largeur << " x " << hauteur << std::endl;
-
-    // Pour chaque bloc complet de taille sautH x sautV
-    for (auto i = sautV + hauteur % sautV / 2; i < hauteur; i += sautV) {
-        for (auto j = sautH + largeur % sautH / 2; j < largeur; j += sautH) {
-            unsigned int vert_tot = 0;
-
-            // Calculer la moyenne des valeurs de vert ( [0, 256[ )
-            for (auto ii = i - sautV; ii < i; ++ii) {
-                for (auto jj = j - sautH; jj < j; ++jj) {
-                    vert_tot += png[ii * largeur + jj].green;
-                }
-            }
-
-            // Sélectionner un des 16 caractères ASCII (/16 = *16/256)
-            ostr << ascii[vert_tot / (sautV * sautH * 16)];
-        }
-
-        ostr << std::endl;
-    }
-
-    return ostr;
-}
-
-
-/**
  * Triplet (Chaleur, Température, Conduction)
  */
 typedef struct {
@@ -155,39 +117,82 @@ public:
     inline std::size_t largeur() const { return larg; }
     inline std::size_t hauteur() const { return haut; }
 
+    /**
+     * Effectuer une itération d'écoulement de chaleur sur toute la grille
+     * @return La différence de température moyenne
+     */
     ctc_t un_pas_de_temps() {
-        ctc_t delta_temp = 0.;
+        ctc_t somme_delta = 0.;
 
-        // Convergence accélérée si traité en damier (une couleur à la fois)
+        // Converge plus vite si on traite en damier (une couleur à la fois)
         for (auto impair = 0; impair < 2; ++impair) {
             // Laisser faire la marge de 1 pixel
             for (auto i = 1; i < haut - 1; ++i) {
                 auto depart = (((i + 1) ^ impair) & 1);  // Damier
 
                 for (auto j = 1 + depart; j < larg - 1; j += 2) {
-                    auto conduct = conduction(i, j);
-                    auto ancienne_temp = temperature(i, j);
-                    auto nouvelle_temp = std::max(chaleur(i, j), (
+                    ctc_t conduct = conduction(i, j);
+                    ctc_t ancienne_temp = temperature(i, j);
+                    ctc_t nouvelle_temp = std::max(chaleur(i, j), (
                         temperature(i - 1, j) +
                         temperature(i, j - 1) +
                         temperature(i, j + 1) +
                         temperature(i + 1, j) ) / 4 + BRUIT);
+                    ctc_t delta_temp = conduct *
+                        (nouvelle_temp - ancienne_temp);
 
-                    ctc(i, j).temperature = conduct * nouvelle_temp +
-                        (1.0 - conduct) * ancienne_temp;
-                    delta_temp += std::abs(
-                        ancienne_temp - ctc(i, j).temperature);
+                    ctc(i, j).temperature += delta_temp;
+                    somme_delta += std::abs(delta_temp);
                 }
             }
         }
 
-        return delta_temp / (larg * haut);
+        return somme_delta / (larg * haut);
     }
 
 private:
     std::size_t larg;
     std::size_t haut;
 };
+
+
+/**
+ * Normaliser la température selon les températures minimale et maximale.
+ * Convertir cette valeur de 0..1 en couleur sur un dégradé de noir, à bleu,
+ * à magenta, à rouge, à jaune et à blanc, selon une courbe de Bézier.
+ *
+ * @param temp Température à normaliser
+ * @param t_min Température minimale mesurée
+ * @param t_max Température maximale mesurée
+ * @return Pixel RGB de type png_color selon la valeur de temp.
+ */
+png_color normaliser_couleur(ctc_t temp, ctc_t t_min, ctc_t t_max)
+{
+    const ctc_t t = (temp - t_min) / (t_max - t_min);
+    std::vector<std::array<double, 3>> couleurs {{
+       {  0,   0,   0},  // Noir
+       {  0,   0, 255},  // Bleu
+       {255,   0, 255},  // Magenta
+       {255,   0,   0},  // Rouge
+       {255, 255,   0},  // Jaune
+       {255, 255, 255}   // Blanc
+    }};
+
+    // Calcul itératif de la courbe de Bézier dans l'espace des couleurs
+    for (auto iter = 1; iter < couleurs.size(); ++iter) {
+        for (auto i = 0; i < couleurs.size() - iter; ++i) {
+            couleurs[i][0] += t * (couleurs[i + 1][0] - couleurs[i][0]);
+            couleurs[i][1] += t * (couleurs[i + 1][1] - couleurs[i][1]);
+            couleurs[i][2] += t * (couleurs[i + 1][2] - couleurs[i][2]);
+        }
+    }
+
+    return png_color {
+        (png_byte)couleurs[0][0],
+        (png_byte)couleurs[0][1],
+        (png_byte)couleurs[0][2]
+    };
+}
 
 
 /**
@@ -233,6 +238,7 @@ int main(int argc, char** argv)
         nb_iter++;
     }
 
+    // Calcul et affichage de statistiques
     const auto minmax = std::minmax_element(
         carte_gpu.cbegin(), carte_gpu.cend(),
         [](const CTC & a, const CTC & b) {
@@ -244,35 +250,18 @@ int main(int argc, char** argv)
         << ", t_max = " << minmax.second->temperature
         << std::endl;
 
-    // Tranformer les triplets CTC en pixels RGB
-    std::transform(carte_gpu.cbegin(), carte_gpu.cend(), png.begin(),
-        [minmax](const CTC & ctc) {
-            const double t = (ctc.temperature - minmax.first->temperature) /
-                (minmax.second->temperature - minmax.first->temperature);
-            std::vector<std::array<double, 3>> couleurs {{
-               {  0,   0,   0},  // Noir
-               {  0,   0, 255},  // Bleu
-               {255,   0, 255},  // Magenta
-               {255,   0,   0},  // Rouge
-               {255, 255,   0},  // Jaune
-               {255, 255, 255}   // Blanc
-            }};
-            // Calcul itératif de courbe de Bézier dans l'espace des couleurs
-            for (auto iter = 1; iter < couleurs.size(); ++iter) {
-                for (auto i = 0; i < couleurs.size() - iter; ++i) {
-                    couleurs[i][0] += t * (couleurs[i+1][0] - couleurs[i][0]);
-                    couleurs[i][1] += t * (couleurs[i+1][1] - couleurs[i][1]);
-                    couleurs[i][2] += t * (couleurs[i+1][2] - couleurs[i][2]);
-                }
-            }
-            return png_color {
-                (png_byte)couleurs[0][0],
-                (png_byte)couleurs[0][1],
-                (png_byte)couleurs[0][2]
-            };
-        });
-
     try {
+        // Tranformer les triplets CTC en pixels RGB
+        std::transform(carte_gpu.cbegin(), carte_gpu.cend(), png.begin(),
+            [minmax](const CTC & ctc) {
+                return normaliser_couleur(
+                    ctc.temperature,
+                    minmax.first->temperature,
+                    minmax.second->temperature
+                );
+            });
+
+        // Enregistrer l'image résultante
         png.enregistrer("resultat.png");
     }
     catch (const std::string message) {
