@@ -251,7 +251,7 @@ int main(int argc, char** argv)
         << std::endl;
 
     try {
-        // Tranformer les triplets CTC en pixels RGB
+        // Tranformer les températures en pixels RGB
         std::transform(carte_gpu.cbegin(), carte_gpu.cend(), png.begin(),
             [minmax](const CTC & ctc) {
                 return normaliser_couleur(
