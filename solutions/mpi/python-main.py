@@ -121,7 +121,6 @@ def main():
         else:
             sys.exit(None)
 
-    """
     # Boucle principale
     delta_temp = SEUIL_CONVERGENCE + 1.;
     nb_iter = 0;
@@ -130,26 +129,26 @@ def main():
         delta_temp = un_pas_de_temps(carte_gpu)
         nb_iter += 1
 
-    # Calcul et affichage de statistiques
-    minmax = (
-        carte_gpu[:, :, TEMPERATURE].min(),
-        carte_gpu[:, :, TEMPERATURE].max()
-    )
-    print(
-        f'Itération #{nb_iter},',
-        f'ajustement moyen = {delta_temp * 256} / 256,',
-        f't_min = {minmax[0]}, t_max = {minmax[1]}'
-    )
+    if rank == 0:
+        # Calcul et affichage de statistiques
+        minmax = (
+            carte_gpu[:, :, TEMPERATURE].min(),
+            carte_gpu[:, :, TEMPERATURE].max()
+        )
+        print(
+            f'Itération #{nb_iter},',
+            f'ajustement moyen = {delta_temp * 256} / 256,',
+            f't_min = {minmax[0]}, t_max = {minmax[1]}'
+        )
 
-    try:
-        # Tranformer les températures en pixels RGB
-        png = normaliser_couleur(carte_gpu[:, :, TEMPERATURE], minmax)
+        try:
+            # Tranformer les températures en pixels RGB
+            png = normaliser_couleur(carte_gpu[:, :, TEMPERATURE], minmax)
 
-        # Enregistrer l'image résultante
-        Image.fromarray(png, 'RGB').save("resultat.png")
-    except Exception as e:
-        sys.exit(f'Erreur: {e}')
-    """
+            # Enregistrer l'image résultante
+            Image.fromarray(png, 'RGB').save("resultat.png")
+        except Exception as e:
+            sys.exit(f'Erreur: {e}')
 
     MPI.Finalize()
 

@@ -297,36 +297,36 @@ int main(int argc, char** argv)
     }
 
     if (rank == 0) {
-    // Calcul et affichage de statistiques
-    const auto minmax = std::minmax_element(
-        carte_gpu.cbegin(), carte_gpu.cend(),
-        [](const CTC & a, const CTC & b) {
-            return a.temperature < b.temperature;
-        });
-    std::cout << "Itération #" << nb_iter
-        << ", ajustement moyen = " << delta_temp * 256 << " / 256"
-        << ", t_min = " << minmax.first->temperature
-        << ", t_max = " << minmax.second->temperature
-        << std::endl;
-
-    try {
-        // Tranformer les températures en pixels RGB
-        std::transform(carte_gpu.cbegin(), carte_gpu.cend(), png.begin(),
-            [minmax](const CTC & ctc) {
-                return normaliser_couleur(
-                    ctc.temperature,
-                    minmax.first->temperature,
-                    minmax.second->temperature
-                );
+        // Calcul et affichage de statistiques
+        const auto minmax = std::minmax_element(
+            carte_gpu.cbegin(), carte_gpu.cend(),
+            [](const CTC & a, const CTC & b) {
+                return a.temperature < b.temperature;
             });
+        std::cout << "Itération #" << nb_iter
+            << ", ajustement moyen = " << delta_temp * 256 << " / 256"
+            << ", t_min = " << minmax.first->temperature
+            << ", t_max = " << minmax.second->temperature
+            << std::endl;
 
-        // Enregistrer l'image résultante
-        png.enregistrer("resultat.png");
-    }
-    catch (const std::string message) {
-        std::cerr << "Erreur: " << message << std::endl;
-        MPI_Abort(MPI_COMM_WORLD, 3);
-    }
+        try {
+            // Tranformer les températures en pixels RGB
+            std::transform(carte_gpu.cbegin(), carte_gpu.cend(), png.begin(),
+                [minmax](const CTC & ctc) {
+                    return normaliser_couleur(
+                        ctc.temperature,
+                        minmax.first->temperature,
+                        minmax.second->temperature
+                    );
+                });
+
+            // Enregistrer l'image résultante
+            png.enregistrer("resultat.png");
+        }
+        catch (const std::string message) {
+            std::cerr << "Erreur: " << message << std::endl;
+            MPI_Abort(MPI_COMM_WORLD, 3);
+        }
     }
 
     MPI_Finalize();
