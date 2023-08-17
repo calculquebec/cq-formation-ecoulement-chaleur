@@ -15,7 +15,7 @@ NB_MAX_ITER = 5000  # Limiter le temps de calcul
 CHALEUR, TEMPERATURE, CONDUCTION = 0, 1, 2
 
 
-def un_pas_de_temps(carte_gpu):
+def un_pas_de_temps(carte_gpu, rank, size):
     """
     Effectuer une itération d'écoulement de chaleur sur toute la grille
 
@@ -28,23 +28,50 @@ def un_pas_de_temps(carte_gpu):
     assert carte_gpu.shape[2] == 3, f"la 3e dimension n'a pas 3 couches"
 
     somme_delta = ctc_t(0.)
+    debut = 1 + rank * (carte_gpu.shape[0] - 2) // size // 2 * 2
+    fin = 1 + (rank + 1) * (carte_gpu.shape[0] - 2) // size // 2 * 2
 
     # Converge plus vite si on traite en damier (une couleur à la fois)
     # Laisser faire la marge de 1 pixel
-    for i, j in [(1, 1), (2, 2), (1, 2), (2, 1)]:
-        conduct = carte_gpu[i:-1:2, j:-1:2, CONDUCTION]
-        ancienne_temp = carte_gpu[i:-1:2, j:-1:2, TEMPERATURE].copy()
-        nouvelle_temp = np.maximum(carte_gpu[i:-1:2, j:-1:2, CHALEUR], (
-            carte_gpu[i-1:-2:2, j:-1:2, TEMPERATURE] +
-            carte_gpu[i:-1:2, j-1:-2:2, TEMPERATURE] +
-            carte_gpu[i:-1:2, j+1::2, TEMPERATURE] +
-            carte_gpu[i+1::2, j:-1:2, TEMPERATURE] ) / 4 + BRUIT)
+    for i, j in [(0, 1), (1, 2), (0, 2), (1, 1)]:
+        conduct = carte_gpu[debut+i:fin+i:2, j:-1:2, CONDUCTION]
+        ancienne_temp = carte_gpu[debut+i:fin+i:2, j:-1:2, TEMPERATURE].copy()
+        nouvelle_temp = np.maximum(
+            carte_gpu[debut+i:fin+i:2, j:-1:2, CHALEUR],
+            (
+                carte_gpu[debut+i-1:fin+i-1:2, j:-1:2, TEMPERATURE] +
+                carte_gpu[debut+i:fin+i:2, j-1:-2:2, TEMPERATURE] +
+                carte_gpu[debut+i:fin+i:2, j+1::2, TEMPERATURE] +
+                carte_gpu[debut+i+1:fin+i+1:2, j:-1:2, TEMPERATURE]
+            ) / 4 + BRUIT
+        )
         delta_temp = np.multiply(conduct, nouvelle_temp - ancienne_temp)
 
-        carte_gpu[i:-1:2, j:-1:2, TEMPERATURE] += delta_temp
+        carte_gpu[debut+i:fin+i:2, j:-1:2, TEMPERATURE] += delta_temp
         somme_delta += np.sum(np.absolute(delta_temp))
 
-    return somme_delta / (carte_gpu.shape[0] * carte_gpu.shape[1])
+    # Envoyer notre ligne du haut et recevoir celle du voisin
+    envoi_haut = MPI.COMM_WORLD.isend(
+        carte_gpu[debut, :, TEMPERATURE], (rank + size - 1) % size, 123)
+    recep_haut = MPI.COMM_WORLD.irecv(
+        source=(rank + size + 1) % size, tag=123)
+
+    # Envoyer notre ligne du bas et recevoir celle du voisin
+    envoi_bas =  MPI.COMM_WORLD.isend(
+        carte_gpu[fin - 1, :, TEMPERATURE], (rank + size + 1) % size, 789)
+    recep_bas = MPI.COMM_WORLD.irecv(
+        source=(rank + size - 1) % size, tag=789)
+
+    # Calculer la différence totale
+    world_delta = MPI.COMM_WORLD.allreduce(somme_delta)
+
+    # Compléter les envois
+    envoi_haut.wait()
+    carte_gpu[fin, :, TEMPERATURE] = recep_haut.wait()
+    envoi_bas.wait()
+    carte_gpu[debut - 1, :, TEMPERATURE] = recep_bas.wait()
+
+    return world_delta / (carte_gpu.shape[0] * carte_gpu.shape[1])
 
 
 def normaliser_couleur(temperatures, minmax):
@@ -126,8 +153,19 @@ def main():
     nb_iter = 0;
 
     while (delta_temp > SEUIL_CONVERGENCE) and (nb_iter < NB_MAX_ITER):
-        delta_temp = un_pas_de_temps(carte_gpu)
+        delta_temp = un_pas_de_temps(carte_gpu, rank, size)
         nb_iter += 1
+
+    # Récupération des données
+    if rank == 0:
+        for r in range(1, size):
+            debut = 1 + r * (carte_gpu.shape[0] - 2) // size // 2 * 2
+            fin = 1 + (r + 1) * (carte_gpu.shape[0] - 2) // size // 2 * 2
+            carte_gpu[debut:fin, :, TEMPERATURE] = comm.recv(source=r, tag=456)
+    else:
+        debut = 1 + rank * (carte_gpu.shape[0] - 2) // size // 2 * 2
+        fin = 1 + (rank + 1) * (carte_gpu.shape[0] - 2) // size // 2 * 2
+        comm.send(carte_gpu[debut:fin, :, TEMPERATURE], 0, 456)
 
     if rank == 0:
         # Calcul et affichage de statistiques
