@@ -48,9 +48,9 @@ Voici l'algorithme de base d'un pas de temps d'évolution du modèle :
 convergence du modèle, il faudra une boucle principale limitant le nombre
 d'itérations.
 De plus, il faudra aussi interrompre la boucle lorsqu'un certain seuil de
-convergence sera atteint. En d'autres mots, lorsque la variation moyenne
-des températures du modèle est en deçà d'un certain delta-T,
-on considère que le modèle se stabilise.
+convergence sera atteint.
+En d'autres mots, lorsque la variation moyenne des températures du modèle
+est en deçà d'un certain seuil, on considère que le modèle est stabilisé.
 
 * Tant que le nombre d'itérations est inférieur à la limite ET
   que la variation moyenne des températures est supérieure au seuil :
@@ -58,25 +58,31 @@ on considère que le modèle se stabilise.
   * Calculer un pas de temps du modèle
   * Calculer la moyenne des variations de température
 
-Enfin, on comprend que le modèle peut se calculer du coin supérieur gauche
-du modèle jusqu'au point inférieur droit.
-Par conséquent, une température moyenne des voisins utiliserait les
-températures du nouveau pas de temps pour les points de haut et de gauche,
-et du pas de temps précédent pour les points de droite et du bas.
-Pour accélérer la convergence, on peut traiter les points de la grille selon
-les couleurs d'un damier : traiter toutes les cases blanches et ensuite
-toutes les cases noires, le tout dans un même pas de temps du modèle.
-Ainsi, la lecture des températures voisines se ferait toujours avec des
-valeurs voisines d'une même génération.
+Enfin, on comprend qu'un pas de temps peut se calculer du coin
+supérieur gauche du modèle jusqu'au point inférieur droit.
+À considérer lors de l'implémentation :
+
+* Si la lecture et l'écriture des températures se fait dans le même
+  espace mémoire, au moment de calculer la nouvelle température d'un point,
+  la température moyenne des points voisins comprendrait les températures
+  du nouveau pas de temps pour les voisins de haut et de gauche,
+  mais du pas de temps précédent pour les voisins de droite et du bas.
+* Pour accélérer la convergence du modèle global, on peut traiter
+  les points de la grille selon le patron des couleurs d'un damier :
+  traiter toutes les cases noires et ensuite toutes les cases blanches,
+  le tout dans un même pas de temps du modèle.
+  Ainsi, la lecture des températures voisines se ferait
+  toujours avec des valeurs voisines d'une même génération.
 
 ## Implémentation
 
-L'image fournie et le code séquentiel suggéré ont été ajustés pour générer
+L'image fournie et les codes séquentiels suggérés ont été ajustés pour générer
 un résultat visuellement intéressant après un temps de calcul raisonnable.
 Par exemple, avec une trop faible résolution de température (int8 vs float32),
 la convergence pouvait être atteinte trop rapidement.
-De plus, un facteur de bruit constant est ajouté à la moyenne pour accélérer
-l'accumulation de chaleur dans les points ayant une forte conduction.
+De plus, un facteur de bruit constant est ajouté à la moyenne
+des températures voisines pour accélérer l'accumulation
+de chaleur dans les points ayant un indice de conduction élevé.
 
 ## Code C++
 
