@@ -23,8 +23,8 @@ def un_pas_de_temps(carte_gpu):
     Retourne: La différence de température moyenne
     """
 
-    assert len(carte_gpu.shape) == 3, f"la grille n'est pas 3D"
-    assert carte_gpu.shape[2] == 3, f"la 3e dimension n'a pas 3 couches"
+    assert len(carte_gpu.shape) == 3, "la grille n'est pas 3D"
+    assert carte_gpu.shape[2] == 3, "la 3e dimension n'a pas 3 couches"
 
     somme_delta = ctc_t(0.)
 
@@ -33,11 +33,15 @@ def un_pas_de_temps(carte_gpu):
     for i, j in [(1, 1), (2, 2), (1, 2), (2, 1)]:
         conduct = carte_gpu[i:-1:2, j:-1:2, CONDUCTION]
         ancienne_temp = carte_gpu[i:-1:2, j:-1:2, TEMPERATURE].copy()
-        nouvelle_temp = np.maximum(carte_gpu[i:-1:2, j:-1:2, CHALEUR], (
-            carte_gpu[i-1:-2:2, j:-1:2, TEMPERATURE] +
-            carte_gpu[i:-1:2, j-1:-2:2, TEMPERATURE] +
-            carte_gpu[i:-1:2, j+1::2, TEMPERATURE] +
-            carte_gpu[i+1::2, j:-1:2, TEMPERATURE] ) / 4 + BRUIT)
+        nouvelle_temp = np.maximum(
+            carte_gpu[i:-1:2, j:-1:2, CHALEUR],
+            (
+                carte_gpu[i-1:-2:2, j:-1:2, TEMPERATURE] +
+                carte_gpu[i:-1:2, j-1:-2:2, TEMPERATURE] +
+                carte_gpu[i:-1:2, j+1::2, TEMPERATURE] +
+                carte_gpu[i+1::2, j:-1:2, TEMPERATURE]
+            ) / 4 + BRUIT
+        )
         delta_temp = np.multiply(conduct, nouvelle_temp - ancienne_temp)
 
         carte_gpu[i:-1:2, j:-1:2, TEMPERATURE] += delta_temp
@@ -59,13 +63,13 @@ def normaliser_couleur(temperatures, minmax):
     """
 
     # Normalisation des températures selon t_min et t_max
-    t = (temperatures - minmax[0]) / (minmax[1] - minmax[0]);
+    t = (temperatures - minmax[0]) / (minmax[1] - minmax[0])
 
     # Créer une image RGB pour chaque couleur
     images = []
     couleurs = [
-       (  0,   0,   0),  # Noir
-       (  0,   0, 255),  # Bleu
+       (0,     0,   0),  # Noir
+       (0,     0, 255),  # Bleu
        (255,   0, 255),  # Magenta
        (255,   0,   0),  # Rouge
        (255, 255,   0),  # Jaune
@@ -86,8 +90,10 @@ def normaliser_couleur(temperatures, minmax):
     for iter in range(1, len(images)):
         for i in range(len(images) - iter):
             for canal in range(3):
-                images[i][:, :, canal] += np.multiply(t,
-                    images[i + 1][:, :, canal] - images[i][:, :, canal])
+                images[i][:, :, canal] += np.multiply(
+                    t,
+                    images[i + 1][:, :, canal] - images[i][:, :, canal]
+                )
 
     return np.uint8(images[0])
 
@@ -111,8 +117,8 @@ def main():
         sys.exit(f'Erreur: {e}')
 
     # Boucle principale
-    delta_temp = SEUIL_CONVERGENCE + 1.;
-    nb_iter = 0;
+    delta_temp = SEUIL_CONVERGENCE + 1.
+    nb_iter = 0
 
     while (delta_temp > SEUIL_CONVERGENCE) and (nb_iter < NB_MAX_ITER):
         delta_temp = un_pas_de_temps(carte_gpu)
