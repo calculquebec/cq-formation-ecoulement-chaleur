@@ -14,11 +14,13 @@ NB_MAX_ITER = 5000  # Limiter le temps de calcul
 CHALEUR, TEMPERATURE, CONDUCTION = 0, 1, 2
 
 
-def un_pas_de_temps(carte_gpu):
+def un_pas_de_temps(carte_gpu, rank, nranks):
     """
     Effectuer une itération d'écoulement de chaleur sur toute la grille
 
     carte_gpu - numpy.ndarray à 3 dimensions, 3 couches pour la 3e dimension
+    rank - rang du processus dans le communicateur
+    nranks - nombre de processus dans le communicateur
 
     Retourne: La différence de température moyenne
     """
@@ -28,24 +30,42 @@ def un_pas_de_temps(carte_gpu):
 
     somme_delta = ctc_t(0.)
 
-    # Converge plus vite si on traite en damier (une couleur à la fois)
-    # Laisser faire la marge de 1 pixel
-    for i, j in [(1, 1), (2, 2), (1, 2), (2, 1)]:
-        conduct = carte_gpu[i:-1:2, j:-1:2, CONDUCTION]
-        ancienne_temp = carte_gpu[i:-1:2, j:-1:2, TEMPERATURE].copy()
-        nouvelle_temp = np.maximum(
-            carte_gpu[i:-1:2, j:-1:2, CHALEUR],
-            (
-                carte_gpu[i-1:-2:2, j:-1:2, TEMPERATURE] +
-                carte_gpu[i:-1:2, j-1:-2:2, TEMPERATURE] +
-                carte_gpu[i:-1:2, j+1::2, TEMPERATURE] +
-                carte_gpu[i+1::2, j:-1:2, TEMPERATURE]
-            ) / 4 + BRUIT
-        )
-        delta_temp = np.multiply(conduct, nouvelle_temp - ancienne_temp)
+    # Laisser faire la marge de 1 pixel, forcer un nombre pair de lignes
+    debut = 1
+    fin = 1 + (carte_gpu.shape[0] - 2) // 2 * 2
 
-        carte_gpu[i:-1:2, j:-1:2, TEMPERATURE] += delta_temp
-        somme_delta += np.sum(np.absolute(delta_temp))
+    # Converge plus vite si on traite en damier (une couleur à la fois)
+    for diagonale in [[(0, 0), (1, 1)], [(0, 1), (1, 0)]]:
+        for i, j in diagonale:
+            chaleur = carte_gpu[
+                debut + i: fin + i: 2,
+                1 + j: -1: 2,
+                CHALEUR
+            ]
+            ancienne_temp = carte_gpu[
+                debut + i: fin + i: 2,
+                1 + j: -1: 2,
+                TEMPERATURE
+            ]
+            conduction = carte_gpu[
+                debut + i: fin + i: 2,
+                1 + j: -1: 2,
+                CONDUCTION
+            ]
+
+            nouvelle_temp = np.maximum(
+                chaleur,
+                (
+                    carte_gpu[debut+i-1: fin+i-1: 2, 1+j: -1: 2, TEMPERATURE] +
+                    carte_gpu[debut+i:   fin+i:   2,   j: -2: 2, TEMPERATURE] +
+                    carte_gpu[debut+i:   fin+i:   2, 2+j::    2, TEMPERATURE] +
+                    carte_gpu[debut+i+1: fin+i+1: 2, 1+j: -1: 2, TEMPERATURE]
+                ) / 4 + BRUIT
+            )
+            delta_temp = np.multiply(conduction, nouvelle_temp - ancienne_temp)
+
+            carte_gpu[debut+i: fin+i: 2, 1+j: -1: 2, TEMPERATURE] += delta_temp
+            somme_delta += np.sum(np.absolute(delta_temp))
 
     return somme_delta / (carte_gpu.shape[0] * carte_gpu.shape[1])
 
@@ -103,6 +123,10 @@ def main():
     Programme principal
     """
 
+    # comm = None
+    rank = 0
+    nranks = 1
+
     if len(sys.argv) < 2:
         sys.exit(f'Usage: {sys.argv[0]} fichier.png')
 
@@ -121,7 +145,7 @@ def main():
     nb_iter = 0
 
     while (delta_temp > SEUIL_CONVERGENCE) and (nb_iter < NB_MAX_ITER):
-        delta_temp = un_pas_de_temps(carte_gpu)
+        delta_temp = un_pas_de_temps(carte_gpu, rank, nranks)
         nb_iter += 1
 
     # Calcul et affichage de statistiques
