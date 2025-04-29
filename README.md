@@ -73,6 +73,12 @@ supérieur gauche du modèle jusqu'au point inférieur droit.
   le tout dans un même pas de temps du modèle.
   Ainsi, la lecture des températures voisines se ferait
   toujours avec des valeurs voisines d'une même génération.
+* Pour calculer un pas de temps en parallèle, on peut partitionner l'image
+  afin de diviser le travail. Cependant, aux frontières, il faut que les
+  nouvelles valeurs calculées pour chaque couleur de damier soient échangées
+  entre les partitions voisines.
+
+![Damier partitionné](doc/images/checkboard-partitions.svg)
 
 ## Implémentation
 
